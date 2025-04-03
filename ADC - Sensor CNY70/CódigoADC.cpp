@@ -17,6 +17,75 @@ volatile uint8_t current_digit = 0;
 volatile uint32_t tick_counter = 0;     // Contador general de ticks (1ms cada uno)
 volatile uint16_t display_update = 0;   // Flag para actualizar display en bucle principal
 
+
+
+
+
+//----------------------------------------------ADC-----------------------------------//
+// Variable para el voltaje leído
+volatile uint16_t voltage = 0; // Corregir el tipo de dato a uint16_t
+volatile double volts = 0; // Variable para almacenar el voltaje convertido
+
+
+
+void adc(){
+
+    RCC->AHB1ENR |= (1<<0)|(1<<1)|(1<<2)|(1<<3); //enable clock for port A,B,C ,D
+
+    RCC->APB2ENR|=(1<<8)|(1<<9)|(1<<10); //ENABLE ADC 1,2 AND 3 CLOCK
+
+    // A PORTS AS ADC
+    /*MODER 0 FOR 8 BITS ,4 MHZ, 112 CYCLES , ALLINGMENT RIGHT 
+    0,3-  1V----->TURN ON BLUE LED
+    1,3-  2V----->TURN ON GREEN LED
+    2-    3V----->TURN ON RED LED
+    */
+    GPIOA->MODER|=(1<<1)|(1<<0); //PA0 as analog mode
+    GPIOA->PUPDR|=(1<<1); //PA0 as pull down mode
+
+// PORTS FOR A0 ADC CONFIGURATION
+    ADC->CCR&= ~(0b11<<16); //F= 8MHZ
+    ADC1->CR1&= ~(0b11<<24);//12 bit resolution
+    ADC1->CR2|=(1<<0)|(1<<10); // turn on ADC & set end of conversion
+    ADC1->CR2 &= ~(1<<11); //right alignment
+    
+    ADC1->SMPR2|=(0b111<<0); //480 cycles
+    
+    ADC1->SQR3 &= ~(0b11111<<0); //clear channel
+    ADC1->SQR3|=(0b00000<<0); //channel 0
+
+
+}
+
+void adc_main(){
+    ADC1->CR2|=(1<<30); //start conversion
+
+    while(((ADC1->SR & (1<<1)) >> 1) == 0){
+
+        ADC2->SR &= ~(1<<1);
+
+    } //wait for conversion to complete (EOC flag)
+        
+        voltage = ADC1->DR; //read value
+        
+        volts = (voltage * 3.3) / 4095; //convert to volts
+        
+        
+
+
+
+
+
+
+    //////////DANIEL´S CODE////////////////// 
+
+}
+
+
+//----------------------------------------------end ADC-----------------------------------//
+
+
+
 // Valores para mostrar cada número (0-9) para display CÁTODO COMÚN
 const uint8_t seven_segment_digits[10] = {
     0b00111111,  // 0: A, B, C, D, E, F 
