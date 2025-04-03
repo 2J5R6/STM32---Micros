@@ -77,7 +77,7 @@ void adc_main(){
 
 
 
-    //////////DANIEL´S CODE////////////////// 
+
 
 }
 
@@ -205,6 +205,15 @@ int main(void) {
     
     // Bucle principal simplificado con SysTick
     while (1) {
+
+     //---------------------------------------------DANIEL´S CODE-------------------------------------------------------------------//
+
+     adc(); // Inicializar ADC 
+     adc_main(); // Llamar a la función principal del ADC
+
+    //---------------------------------------------END DANIEL´S CODE-------------------------------------------------------------------//
+
+
         // Actualizar el display cuando lo indique la interrupción de SysTick
         if (display_update) {
             display_update = 0;
