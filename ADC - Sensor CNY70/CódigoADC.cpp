@@ -13,6 +13,10 @@ volatile uint16_t counter = 0;
 // Variable para controlar qué dígito se muestra (para multiplexación)
 volatile uint8_t current_digit = 0;
 
+// Variables para controlar los tiempos con SysTick
+volatile uint32_t tick_counter = 0;     // Contador general de ticks (1ms cada uno)
+volatile uint16_t display_update = 0;   // Flag para actualizar display en bucle principal
+
 // Valores para mostrar cada número (0-9) para display CÁTODO COMÚN
 const uint8_t seven_segment_digits[10] = {
     0b00111111,  // 0: A, B, C, D, E, F 
@@ -40,90 +44,76 @@ void MySystemInit(void) {
     GPIOD->MODER &= ~(0xFF);    // Limpiar bits para PD0-PD3
     GPIOD->MODER |= 0x55;       // Establecer modo salida (01) para PD0-PD3
 
-    // Configurar TIM2 para el MULTIPLEXADO de dígitos (5ms por dígito = 200Hz)
-    RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
-    TIM2->PSC = 54 - 1;        // Preescalador para obtener 2MHz (216MHz/108)
-    TIM2->ARR = 1000 - 1;       // Auto-reload para 5ms (1000 ciclos a 2MHz)
-    TIM2->DIER |= TIM_DIER_UIE; // Habilitar interrupción de actualización
-    TIM2->CR1 |= TIM_CR1_CEN;   // Iniciar Timer2
-
-    // Configurar TIM3 para actualizar el CONTADOR (0.5 segundos)
-    RCC->APB1ENR |= RCC_APB1ENR_TIM3EN; 
-    TIM3->PSC = 10800 - 1;      // Prescaler para obtener 20kHz
-    TIM3->ARR = 1000 - 1;      // Auto-reload para 0.5 segundos
-    TIM3->DIER |= TIM_DIER_UIE; // Habilitar interrupción de actualización
-    TIM3->CR1 |= TIM_CR1_CEN;   // Iniciar Timer3
-    
-    // Configurar interrupciones
-    NVIC_EnableIRQ(TIM2_IRQn);  // Para multiplexado de dígitos
-    NVIC_EnableIRQ(TIM3_IRQn);  // Para actualización del contador
-    
-    // Prioridad más alta para el multiplexado (evita parpadeo)
-    NVIC_SetPriority(TIM2_IRQn, 1);
-    NVIC_SetPriority(TIM3_IRQn, 2);
+    // Configurar SysTick para interrumpir cada 1ms (1000Hz)
+    // SystemCoreClock para STM32F7 es típicamente 216MHz
+    SysTick_Config(SystemCoreClock / 1000);
 }
 
-// Manejador de interrupción para TIM2 (multiplexado de dígitos)
-extern "C" void TIM2_IRQHandler(void) {
-    if (TIM2->SR & TIM_SR_UIF) {
-        TIM2->SR &= ~TIM_SR_UIF;  // Limpiar flag de interrupción
-        
-        // Apagar todos los dígitos para evitar fantasmas
-        GPIOD->ODR = 0xFF;  // Para cátodo común, 1 = apagado
-        
-        // Calcular qué dígito y valor mostrar
-        uint16_t value = counter;
-        uint8_t digit_value = 0;
-        
-        // Extraer el dígito correspondiente
-        switch (current_digit) {
-            case 0:  // Dígito de unidades (extremo derecho)
-                digit_value = value % 10;
+// Función para actualizar el display según el dígito actual
+void UpdateDisplay(void) {
+    // Apagar todos los dígitos para evitar fantasmas
+    GPIOD->ODR = 0xFF;  // Para cátodo común, 1 = apagado
+    
+    // Calcular qué dígito y valor mostrar
+    uint16_t value = counter;
+    uint8_t digit_value = 0;
+    
+    // Extraer el dígito correspondiente
+    switch (current_digit) {
+        case 0:  // Dígito de unidades (extremo derecho)
+            digit_value = value % 10;
+            GPIOE->ODR = seven_segment_digits[digit_value];
+            GPIOD->ODR = 0xF7;  // Activar PD3 (extremo derecho)
+            break;
+            
+        case 1:  // Dígito de decenas
+            value /= 10;
+            digit_value = value % 10;
+            // Solo mostrar si el número es >= 10
+            if (counter >= 10) {
                 GPIOE->ODR = seven_segment_digits[digit_value];
-                GPIOD->ODR = 0xF7;  // Activar PD3 (extremo derecho)
-                break;
-                
-            case 1:  // Dígito de decenas
-                value /= 10;
-                digit_value = value % 10;
-                // Solo mostrar si el número es >= 10
-                if (counter >= 10) {
-                    GPIOE->ODR = seven_segment_digits[digit_value];
-                    GPIOD->ODR = 0xFB;  // Activar PD2 (tercero desde izquierda)
-                }
-                break;
-                
-            case 2:  // Dígito de centenas
-                value /= 100;
-                digit_value = value % 10;
-                // Solo mostrar si el número es >= 100
-                if (counter >= 100) {
-                    GPIOE->ODR = seven_segment_digits[digit_value];
-                    GPIOD->ODR = 0xFD;  // Activar PD1 (segundo desde izquierda)
-                }
-                break;
-                
-            case 3:  // Dígito de millares (extremo izquierdo)
-                value /= 1000;
-                digit_value = value % 10;
-                // Solo mostrar si el número es >= 1000
-                if (counter >= 1000) {
-                    GPIOE->ODR = seven_segment_digits[digit_value];
-                    GPIOD->ODR = 0xFE;  // Activar PD0 (extremo izquierdo)
-                }
-                break;
-        }
-        
-        // Avanzar al siguiente dígito para la próxima interrupción
-        current_digit = (current_digit + 1) % 4;
+                GPIOD->ODR = 0xFB;  // Activar PD2 (tercero desde izquierda)
+            }
+            break;
+            
+        case 2:  // Dígito de centenas
+            value /= 100;
+            digit_value = value % 10;
+            // Solo mostrar si el número es >= 100
+            if (counter >= 100) {
+                GPIOE->ODR = seven_segment_digits[digit_value];
+                GPIOD->ODR = 0xFD;  // Activar PD1 (segundo desde izquierda)
+            }
+            break;
+            
+        case 3:  // Dígito de millares (extremo izquierdo)
+            value /= 1000;
+            digit_value = value % 10;
+            // Solo mostrar si el número es >= 1000
+            if (counter >= 1000) {
+                GPIOE->ODR = seven_segment_digits[digit_value];
+                GPIOD->ODR = 0xFE;  // Activar PD0 (extremo izquierdo)
+            }
+            break;
     }
+    
+    // Avanzar al siguiente dígito para la próxima actualización
+    current_digit = (current_digit + 1) % 4;
 }
 
-// Manejador de interrupción para TIM3 (actualización del contador)
-extern "C" void TIM3_IRQHandler(void) {
-    if (TIM3->SR & TIM_SR_UIF) {
-        TIM3->SR &= ~TIM_SR_UIF;
-        
+// Manejador de interrupción para SysTick (cada 1ms)
+extern "C" void SysTick_Handler(void) {
+    // Incrementar contador general de ticks
+    tick_counter++;
+    
+    // Actualizar display con una alta frecuencia (cada 2ms)
+    // Esto da un tiempo de refresco de aproximadamente 500Hz
+    if (tick_counter % 2 == 0) {
+        display_update = 1; // Flag para actualizar el display en el bucle principal
+    }
+    
+    // Actualizar el contador del display (cada 100ms = 10 veces por segundo)
+    if (tick_counter % 100 == 0) {
         // Incrementar contador de 0 a 9999
         counter++;
         if (counter > 9999) {
@@ -144,8 +134,12 @@ int main(void) {
     GPIOE->ODR = 0;       // Todos segmentos apagados
     GPIOD->ODR = 0xFF;    // Todos dígitos apagados (para cátodo común, 1 = apagado)
     
+    // Bucle principal simplificado con SysTick
     while (1) {
-        // Todo el trabajo de visualización se maneja en las interrupciones
-        // No necesitamos hacer nada en el bucle principal
+        // Actualizar el display cuando lo indique la interrupción de SysTick
+        if (display_update) {
+            display_update = 0;
+            UpdateDisplay();
+        }
     }
 }
