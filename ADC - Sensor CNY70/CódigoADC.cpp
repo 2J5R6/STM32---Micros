@@ -7,6 +7,29 @@
 #define DIGIT_3_PIN 2  // Tercero desde izquierda (PD2) - 0xFB activa este dígito
 #define DIGIT_4_PIN 3  // Extremo derecho (PD3) - 0xF7 activa este dígito
 
+// Valores para mostrar cada número (0-9) para display CÁTODO COMÚN
+// IMPORTANTE: Movido al inicio para que esté disponible en todas las funciones
+const uint8_t seven_segment_digits[10] = {
+    0b00111111,  // 0: A, B, C, D, E, F 
+    0b00000110,  // 1: B, C
+    0b01011011,  // 2: A, B, D, E, G
+    0b01001111,  // 3: A, B, C, D, G
+    0b01100110,  // 4: B, C, F, G
+    0b01101101,  // 5: A, C, D, F, G
+    0b01111101,  // 6: A, C, D, E, F, G
+    0b00000111,  // 7: A, B, C
+    0b01111111,  // 8: A, B, C, D, E, F, G
+    0b01101111   // 9: A, B, C, D, F, G
+};
+
+// Patrones para letras (A, B, C, D) para display CÁTODO COMÚN
+const uint8_t seven_segment_letters[4] = {
+    0b01110111,  // A: Segmentos A, B, C, E, F, G
+    0b01111100,  // B: Segmentos C, D, E, F, G
+    0b00111001,  // C: Segmentos A, D, E, F
+    0b01011110   // D: Segmentos B, C, D, E, G
+};
+
 // Variable para el contador (ahora hasta 9999)
 volatile uint16_t counter = 0;
 
@@ -17,16 +40,20 @@ volatile uint8_t current_digit = 0;
 volatile uint32_t tick_counter = 0;     // Contador general de ticks (1ms cada uno)
 volatile uint16_t display_update = 0;   // Flag para actualizar display en bucle principal
 
+// Variables para control de modo
+volatile uint8_t operation_mode = 0;    // 0: Contador normal, 1: Identificación de color
+volatile uint32_t color_mode_start = 0; // Almacena el tiempo de inicio del modo color
+volatile uint8_t color_detected = 0;    // Código de color detectado
+volatile uint8_t color_display[4] = {0}; // Valores a mostrar para el color detectado
 
-
-
+// Forward declarations (declaraciones anticipadas)
+void UpdateDisplay(void);
+void MySystemInit(void);
 
 //----------------------------------------------ADC-----------------------------------//
 // Variable para el voltaje leído
-volatile uint16_t voltage = 0; // Corregir el tipo de dato a uint16_t
+volatile uint16_t voltage = 0;
 volatile double volts = 0; // Variable para almacenar el voltaje convertido
-
-
 
 void adc(){
 
@@ -70,52 +97,75 @@ void adc_main(){
         
         volts = (voltage * 3.3) / 4095; //convert to volts
         
-        
-
-
-
-
-
-
-
-
 }
 
 
-//----------------------------------------------end ADC-----------------------------------//
-
-
-
-// Valores para mostrar cada número (0-9) para display CÁTODO COMÚN
-const uint8_t seven_segment_digits[10] = {
-    0b00111111,  // 0: A, B, C, D, E, F 
-    0b00000110,  // 1: B, C
-    0b01011011,  // 2: A, B, D, E, G
-    0b01001111,  // 3: A, B, C, D, G
-    0b01100110,  // 4: B, C, F, G
-    0b01101101,  // 5: A, C, D, F, G
-    0b01111101,  // 6: A, C, D, E, F, G
-    0b00000111,  // 7: A, B, C
-    0b01111111,  // 8: A, B, C, D, E, F, G
-    0b01101111   // 9: A, B, C, D, F, G
-};
-
-// Función para inicializar el sistema
-void MySystemInit(void) {
-    // Habilitar el reloj para GPIOD y GPIOE
-    RCC->AHB1ENR |= RCC_AHB1ENR_GPIODEN | RCC_AHB1ENR_GPIOEEN;
+// Función para inicializar la interrupción PB2
+void Init_PB2_Interrupt(void) {
+    // 1. Habilitar el reloj para GPIOB
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOBEN;
     
-    // Configurar GPIOE (segmentos) como salidas
-    GPIOE->MODER &= ~(0xFFFF);  // Limpiar bits para PE0-PE7
-    GPIOE->MODER |= 0x5555;     // Establecer modo salida (01) para PE0-PE7
+    // 2. Configurar PB2 como entrada con pull-up
+    GPIOB->MODER &= ~(0x3 << (2*2));      // Limpiar bits (entrada = 00)
+    GPIOB->PUPDR &= ~(0x3 << (2*2));      // Limpiar bits de pull-up/down
+    GPIOB->PUPDR |= (0x1 << (2*2));       // Activar pull-up (01)
     
-    // Configurar GPIOD (dígitos) como salidas
-    GPIOD->MODER &= ~(0xFF);    // Limpiar bits para PD0-PD3
-    GPIOD->MODER |= 0x55;       // Establecer modo salida (01) para PD0-PD3
+    // 3. Configurar interrupción externa para PB2
+    // Habilitar el reloj para SYSCFG
+    RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN;
+    
+    // Conectar PB2 a EXTI2 (línea 2)
+    SYSCFG->EXTICR[0] &= ~(0xF << 8);     // Limpiar bits EXTI2[3:0]
+    SYSCFG->EXTICR[0] |= (0x1 << 8);      // Conectar puerto B a EXTI2 (0001)
+    
+    // Configurar EXTI2 (flanco descendente)
+    EXTI->RTSR &= ~(1 << 2);              // Desactivar trigger en flanco ascendente
+    EXTI->FTSR |= (1 << 2);               // Activar trigger en flanco descendente
+    EXTI->IMR |= (1 << 2);                // Desenmascarar interrupción para EXTI2
+    
+    // 4. Configurar NVIC para EXTI2
+    NVIC_SetPriority(EXTI2_IRQn, 3);      // Prioridad media-baja
+    NVIC_EnableIRQ(EXTI2_IRQn);           // Habilitar interrupción
+}
 
-    // Configurar SysTick para interrumpir cada 1ms (1000Hz)
-    // SystemCoreClock para STM32F7 es típicamente 216MHz
-    SysTick_Config(SystemCoreClock / 1000);
+// Función para determinar el color basado en la lectura ADC
+void DetectColor(void) {
+    // Realizar la lectura ADC
+    adc_main();
+    
+    // Determinar color basado en el valor del voltaje (a ajustar según calibración)
+    if (volts < 0.5) {
+        // Color 1: Negro - Convención "A1"
+        color_display[0] = 10; // 'A' (código especial)
+        color_display[1] = 1;  // '1'
+        color_display[2] = 0;  // Sin mostrar 
+        color_display[3] = 0;  // Sin mostrar
+        color_detected = 1;
+    } 
+    else if (volts < 1.0) {
+        // Color 2: Rojo - Convención "B2"
+        color_display[0] = 11; // 'B' (código especial)
+        color_display[1] = 2;  // '2'
+        color_display[2] = 0;  // Sin mostrar
+        color_display[3] = 0;  // Sin mostrar
+        color_detected = 2;
+    } 
+    else if (volts < 1.5) {
+        // Color 3: Verde - Convención "C3"
+        color_display[0] = 12; // 'C' (código especial)
+        color_display[1] = 3;  // '3'
+        color_display[2] = 0;  // Sin mostrar
+        color_display[3] = 0;  // Sin mostrar
+        color_detected = 3;
+    } 
+    else {
+        // Color 4: Blanco - Convención "D4"
+        color_display[0] = 13; // 'D' (código especial)
+        color_display[1] = 4;  // '4'
+        color_display[2] = 0;  // Sin mostrar
+        color_display[3] = 0;  // Sin mostrar
+        color_detected = 4;
+    }
 }
 
 // Función para actualizar el display según el dígito actual
@@ -170,20 +220,111 @@ void UpdateDisplay(void) {
     current_digit = (current_digit + 1) % 4;
 }
 
+// Función para mostrar en display según modo
+void UpdateDisplayWithMode(void) {
+    // Apagar todos los dígitos para evitar fantasmas
+    GPIOD->ODR = 0xFF;  // Para cátodo común, 1 = apagado
+    
+    if (operation_mode == 0) {
+        // Modo contador - usar función existente
+        UpdateDisplay();
+    } 
+    else {
+        // Modo identificación de color - mostrar resultado
+        uint8_t digit_value = 0;
+        
+        switch (current_digit) {
+            case 0: // Dígito extremo derecho
+                digit_value = color_display[0];
+                if (digit_value < 10) {
+                    GPIOE->ODR = seven_segment_digits[digit_value]; // Es un número normal
+                } else {
+                    // Mostrar letras (A=10, B=11, C=12, D=13)
+                    // Usamos el array de letras definido arriba
+                    GPIOE->ODR = seven_segment_letters[digit_value - 10]; // Convertir 10->0, 11->1, etc.
+                }
+                GPIOD->ODR = 0xF7; // Activar dígito extremo derecho
+                break;
+                
+            case 1: // Segundo dígito desde la derecha
+                digit_value = color_display[1];
+                GPIOE->ODR = seven_segment_digits[digit_value]; // Siempre un número
+                GPIOD->ODR = 0xFB; // Activar segundo dígito desde derecha
+                break;
+                
+            case 2: // Tercer dígito (normalmente vacío)
+                if (color_display[2] > 0) {
+                    GPIOE->ODR = seven_segment_digits[color_display[2]];
+                    GPIOD->ODR = 0xFD; // Activar tercer dígito
+                }
+                break;
+                
+            case 3: // Cuarto dígito (normalmente vacío)
+                if (color_display[3] > 0) {
+                    GPIOE->ODR = seven_segment_digits[color_display[3]];
+                    GPIOD->ODR = 0xFE; // Activar cuarto dígito
+                }
+                break;
+        }
+        
+        // Avanzar al siguiente dígito
+        current_digit = (current_digit + 1) % 4;
+    }
+}
+
+// Manejador de interrupción para EXTI2 (PB2)
+extern "C" void EXTI2_IRQHandler(void) {
+    if (EXTI->PR & (1 << 2)) {
+        // Limpiar flag de interrupción pendiente
+        EXTI->PR |= (1 << 2);
+        
+        // Cambiar al modo identificación de color
+        operation_mode = 1;
+        
+        // Guardar tiempo actual como inicio del modo color
+        color_mode_start = tick_counter;
+        
+        // Detectar color
+        DetectColor();
+    }
+}
+
+// Función para inicializar el sistema
+void MySystemInit(void) {
+    // Habilitar el reloj para GPIOD y GPIOE
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIODEN | RCC_AHB1ENR_GPIOEEN;
+    
+    // Configurar GPIOE (segmentos) como salidas
+    GPIOE->MODER &= ~(0xFFFF);  // Limpiar bits para PE0-PE7
+    GPIOE->MODER |= 0x5555;     // Establecer modo salida (01) para PE0-PE7
+    
+    // Configurar GPIOD (dígitos) como salidas
+    GPIOD->MODER &= ~(0xFF);    // Limpiar bits para PD0-PD3
+    GPIOD->MODER |= 0x55;       // Establecer modo salida (01) para PD0-PD3
+
+    // Configurar SysTick para interrumpir cada 1ms (1000Hz)
+    // SystemCoreClock para STM32F7 es típicamente 216MHz
+    SysTick_Config(SystemCoreClock / 1000);
+}
+
 // Manejador de interrupción para SysTick (cada 1ms)
 extern "C" void SysTick_Handler(void) {
     // Incrementar contador general de ticks
     tick_counter++;
     
+    // Verificar si debemos volver al modo contador (después de 30 segundos = 30000ms)
+    if (operation_mode == 1 && (tick_counter - color_mode_start) >= 30000) {
+        operation_mode = 0; // Volver al modo contador normal
+    }
+    
     // Actualizar display con una alta frecuencia (cada 2ms)
-    // Esto da un tiempo de refresco de aproximadamente 500Hz
     if (tick_counter % 2 == 0) {
         display_update = 1; // Flag para actualizar el display en el bucle principal
     }
     
-    // Actualizar el contador del display (cada 100ms = 10 veces por segundo)
-    if (tick_counter % 100 == 0) {
-        // Incrementar contador de 0 a 9999
+    // Actualizar el contador del display (cada 500ms = 0.5 segundos)
+    if (tick_counter % 500 == 0 && operation_mode == 0) {
+        // Incrementar contador solo en modo contador
         counter++;
         if (counter > 9999) {
             counter = 0;
@@ -195,9 +336,16 @@ int main(void) {
     // Inicializar el sistema
     MySystemInit();
     
+    // Inicializar interrupción PB2
+    Init_PB2_Interrupt();
+    
+    // Inicializar ADC
+    adc();
+    
     // Iniciar con valor 0
     counter = 0;
     current_digit = 0;
+    operation_mode = 0;
     
     // Inicializar estados de salida
     GPIOE->ODR = 0;       // Todos segmentos apagados
@@ -205,19 +353,10 @@ int main(void) {
     
     // Bucle principal simplificado con SysTick
     while (1) {
-
-     //---------------------------------------------DANIEL´S CODE-------------------------------------------------------------------//
-
-     adc(); // Inicializar ADC 
-     adc_main(); // Llamar a la función principal del ADC
-
-    //---------------------------------------------END DANIEL´S CODE-------------------------------------------------------------------//
-
-
         // Actualizar el display cuando lo indique la interrupción de SysTick
         if (display_update) {
             display_update = 0;
-            UpdateDisplay();
+            UpdateDisplayWithMode(); // Función modificada para mostrar según el modo
         }
     }
 }
