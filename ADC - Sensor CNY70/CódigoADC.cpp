@@ -7,12 +7,6 @@
 #define DIGIT_3_PIN 2  // Tercero desde izquierda (PD2) - 0xFB activa este dígito
 #define DIGIT_4_PIN 3  // Extremo derecho (PD3) - 0xF7 activa este dígito
 
-
-
-
-volatile uint16_t voltage = 0; // Corregir el tipo de dato a uint16_t
-volatile double volts = 0; // Variable para almacenar el voltaje convertido
-
 // Valores para mostrar cada número (0-9) para display CÁTODO COMÚN
 // IMPORTANTE: Movido al inicio para que esté disponible en todas las funciones
 const uint8_t seven_segment_digits[10] = {
@@ -38,10 +32,10 @@ const uint8_t seven_segment_letters[16] = {
     0b00001110,  // J: Segmentos B, C, D (J mayúscula)
     0b01110110,  // N: Segmentos A, B, C, E, F y adaptado
     0b01010101,  // R: Segmentos A, B, E, F, G adaptado
-    0b01011000,  // n: Segmentos C, E, G (n minúscula)
+    0b01010100,  // n: Segmentos C, E, G (n minúscula)
     0b01111100,  // b: Segmentos C, D, E, F, G (b minúscula)
     0b01111001,  // E: Segmentos A, D, E, F, G
-    0b01000111,  // F: Segmentos A, E, F, G
+    0b01110001,  // F: Segmentos A, E, F, G
     0b01110011,  // P: Segmentos A, B, E, F, G
     0b01011110,  // d: Segmentos B, C, D, E, G (d minúscula)
     0b01011100,  // o: Segmentos C, D, E, G (o minúscula)
@@ -78,11 +72,10 @@ volatile uint8_t color_display[4] = {0}; // Valores a mostrar para el color dete
 void UpdateDisplay(void);
 void MySystemInit(void);
 
-
-
-//----------------------------------------------ADC1-----------------------------------//
-
-
+//----------------------------------------------ADC-----------------------------------//
+// Variable para el voltaje leído
+volatile uint16_t voltage = 0;
+volatile double volts = 0; // Variable para almacenar el voltaje convertido
 
 void adc(){
 
@@ -90,7 +83,12 @@ void adc(){
 
     RCC->APB2ENR|=(1<<8)|(1<<9)|(1<<10); //ENABLE ADC 1,2 AND 3 CLOCK
 
-
+    // A PORTS AS ADC
+    /*MODER 0 FOR 8 BITS ,4 MHZ, 112 CYCLES , ALLINGMENT RIGHT 
+    0,3-  1V----->TURN ON BLUE LED
+    1,3-  2V----->TURN ON GREEN LED
+    2-    3V----->TURN ON RED LED
+    */
     GPIOA->MODER|=(1<<1)|(1<<0); //PA0 as analog mode
     GPIOA->PUPDR|=(1<<1); //PA0 as pull down mode
 
@@ -119,81 +117,9 @@ void adc_main(){
         
         voltage = ADC1->DR; //read value
         
-        volts = (voltage * 3.3) / 4095; //convert to volts 
+        volts = (voltage * 3.3) / 4095; //convert to volts
         
-
 }
-
-
-//----------------------------------------------end ADC1-----------------------------------//
-
-
-
-//----------------------------------------------ADC2-----------------------------------//
-// Variable para el voltaje leído
-volatile uint16_t voltage2 = 0; // Corregir el tipo de dato a uint16_t
-volatile double volts2 = 0; // Variable para almacenar el voltaje convertido
-
-
-
-void adc_2(){
-
-    GPIOC->MODER |= (1<<3)|(1<<2); //PC1 as analog mod
-	GPIOC->PUPDR |= (1<<3); //PC1 as pull down mode
- 
-    ADC2->CR2 |= ((1<<10)|(1<<0)); //Select the EOC bit at the end of each regular conversion and enable the A/D converter
-    ADC2->CR1 &= ~(0b11<<24); //Clear the A/D resolution bits 
-
-    
-    ADC2->SMPR2|=(0b111<<0); //480 cycles
-    ADC2->SQR3 &= ~(0b11111<<0); //Clear the regular sequence bits 
-    ADC2->SQR3 |= (0b1011<<0); //Set the channel 11 on 1st conversion in regular sequence 
-
-
-
-
-
-}
-
-void adc_main_2(){
-    ADC2->CR2|=(1<<30); //start conversion
-
-    while(((ADC1->SR & (1<<1)) >> 1) == 0){
-
-        ADC2->SR &= ~(1<<1);
-
-    } //wait for conversion to complete (EOC flag)
-        
-        voltage2 = ADC2->DR; //read value
-        
-        volts2 = (voltage * 3.3) / 4095; //convert to volts
-        
-        
-
-
-
-
-
-
-
-
-}
-
-
-//----------------------------------------------end ADC2-----------------------------------//
-
-//-----------------------------------------------------------end DANIEL´S CODE--------------------------------------------------//
-//-----------------------------------------------------------end DANIEL´S CODE--------------------------------------------------//
-
-
-
-
-
-
-
-
-
-
 
 
 // Función para inicializar la interrupción PB2
@@ -499,20 +425,6 @@ int main(void) {
     
     // Bucle principal simplificado con SysTick
     while (1) {
-
-
-        adc(); // Llamar a la función ADC1 para leer el voltaje
-        adc_main();// Llamar a la función ADC1 para leer el voltaje
-
-        adc_2(); // Llamar a la función ADC2 para leer el voltaje
-        adc_main_2();// Llamar a la función ADC2 para leer el voltaje
-
-
-
-
-
-
-
         // Actualizar el display cuando lo indique la interrupción de SysTick
         if (display_update) {
             display_update = 0;
