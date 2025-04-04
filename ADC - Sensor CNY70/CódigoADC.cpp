@@ -22,12 +22,34 @@ const uint8_t seven_segment_digits[10] = {
     0b01101111   // 9: A, B, C, D, F, G
 };
 
-// Patrones para letras (A, B, C, D) para display CÁTODO COMÚN
-const uint8_t seven_segment_letters[4] = {
+// Patrones para letras (A-z, g, r, J, N, R) para display CÁTODO COMÚN
+// Índices: 0=A, 1=z, 2=g, 3=r, 4=J, 5=N, 6=R
+const uint8_t seven_segment_letters[16] = {
     0b01110111,  // A: Segmentos A, B, C, E, F, G
-    0b01111100,  // B: Segmentos C, D, E, F, G
-    0b00111001,  // C: Segmentos A, D, E, F
-    0b01011110   // D: Segmentos B, C, D, E, G
+    0b01011011,  // z: Similar a 2 pero adaptado para la letra z
+    0b01111101,  // g: Similar a 6 pero adaptado para la letra g
+    0b01010000,  // r: Segmentos E, G (r minúscula)
+    0b00001110,  // J: Segmentos B, C, D (J mayúscula)
+    0b01110110,  // N: Segmentos A, B, C, E, F y adaptado
+    0b01010101,  // R: Segmentos A, B, E, F, G adaptado
+    0b01011000,  // n: Segmentos C, E, G (n minúscula)
+    0b01111100,  // b: Segmentos C, D, E, F, G (b minúscula)
+    0b01111001,  // E: Segmentos A, D, E, F, G
+    0b01000111,  // F: Segmentos A, E, F, G
+    0b01110011,  // P: Segmentos A, B, E, F, G
+    0b01011110,  // d: Segmentos B, C, D, E, G (d minúscula)
+    0b01011100,  // o: Segmentos C, D, E, G (o minúscula)
+    0b01111001,  // E: Segmentos A, D, E, F, G
+    0b01110001   // F: Segmentos A, E, F, G
+};
+
+// Códigos de identificación para los colores
+// Cada color tiene 4 caracteres: 2 letras y 2 números
+const uint8_t color_codes[4][4] = {
+    {10, 1, 0, 1},    // Azul: "Az01" (A=10, z=1, 0, 1)
+    {2, 3, 3, 2},     // Gris: "gr32" (g=2, r=3, 3, 2)
+    {5, 3, 4, 5},     // Negro: "Nr45" (N=5, r=3, 4, 5)
+    {6, 4, 9, 7}      // Rojo: "RJ97" (R=6, J=4, 9, 7)
 };
 
 // Variable para el contador (ahora hasta 9999)
@@ -133,38 +155,54 @@ void DetectColor(void) {
     // Realizar la lectura ADC
     adc_main();
     
-    // Determinar color basado en el valor del voltaje (a ajustar según calibración)
-    if (volts < 0.5) {
-        // Color 1: Negro - Convención "A1"
-        color_display[0] = 10; // 'A' (código especial)
-        color_display[1] = 1;  // '1'
-        color_display[2] = 0;  // Sin mostrar 
-        color_display[3] = 0;  // Sin mostrar
+    // Verificar que el sensor esté conectado y tenga una lectura válida
+    if (volts < 0.1) {
+        // Definamos explícitamente los valores para "Err0"
+        // 'E' = índice 9, 'r' = índice 3
+        color_display[0] = 10 + 9;  // 'E' (índice 9)
+        color_display[1] = 10 + 3;  // 'r' (índice 3) 
+        color_display[2] = 10 + 3;  // 'r' (índice 3)
+        color_display[3] = 0;       // '0' (dígito numérico)
+        color_detected = 0;
+        return;
+    }
+    
+    // Determinar color basado en el valor del voltaje (rangos ajustados)
+    if (volts >= 0.3 && volts < 0.6) {
+        // Color 1: Azul - Convención "Az01"
+        for (int i = 0; i < 4; i++) {
+            color_display[i] = color_codes[0][i];
+        }
         color_detected = 1;
     } 
-    else if (volts < 1.0) {
-        // Color 2: Rojo - Convención "B2"
-        color_display[0] = 11; // 'B' (código especial)
-        color_display[1] = 2;  // '2'
-        color_display[2] = 0;  // Sin mostrar
-        color_display[3] = 0;  // Sin mostrar
+    else if (volts >= 0.8 && volts < 1.2) {
+        // Color 2: Gris - Convención "gr32"
+        for (int i = 0; i < 4; i++) {
+            color_display[i] = color_codes[1][i];
+        }
         color_detected = 2;
     } 
-    else if (volts < 1.5) {
-        // Color 3: Verde - Convención "C3"
-        color_display[0] = 12; // 'C' (código especial)
-        color_display[1] = 3;  // '3'
-        color_display[2] = 0;  // Sin mostrar
-        color_display[3] = 0;  // Sin mostrar
+    else if (volts >= 1.4 && volts < 1.8) {
+        // Color 3: Negro - Convención "Nr45"
+        for (int i = 0; i < 4; i++) {
+            color_display[i] = color_codes[2][i];
+        }
         color_detected = 3;
     } 
-    else {
-        // Color 4: Blanco - Convención "D4"
-        color_display[0] = 13; // 'D' (código especial)
-        color_display[1] = 4;  // '4'
-        color_display[2] = 0;  // Sin mostrar
-        color_display[3] = 0;  // Sin mostrar
+    else if (volts >= 2.0 && volts < 3.0) {
+        // Color 4: Rojo - Convención "RJ97"
+        for (int i = 0; i < 4; i++) {
+            color_display[i] = color_codes[3][i];
+        }
         color_detected = 4;
+    }
+    else {
+        // Valor fuera de los rangos conocidos - mostrar "ndEF" (no definido)
+        color_display[0] = 10 + 7;  // Código para 'n' (índice 7 en seven_segment_letters)
+        color_display[1] = 10 + 12; // Código para 'd' (índice 12 en seven_segment_letters)
+        color_display[2] = 10 + 9;  // Código para 'E' (índice 9 en seven_segment_letters)
+        color_display[3] = 10 + 10; // Código para 'F' (índice 10 en seven_segment_letters)
+        color_detected = 5;         // Código no definido
     }
 }
 
@@ -233,41 +271,75 @@ void UpdateDisplayWithMode(void) {
         // Modo identificación de color - mostrar resultado
         uint8_t digit_value = 0;
         
+        // Extraer el dígito correspondiente para el modo color
         switch (current_digit) {
-            case 0: // Dígito extremo derecho
+            case 0:  // Dígito extremo derecho - último carácter (0)
+                digit_value = color_display[3];
+                if (digit_value < 10) {
+                    // Es un dígito numérico
+                    GPIOE->ODR = seven_segment_digits[digit_value];
+                } else {
+                    // Es una letra
+                    uint8_t letter_index = digit_value - 10;
+                    if (letter_index < 16) {
+                        GPIOE->ODR = seven_segment_letters[letter_index];
+                    } else {
+                        GPIOE->ODR = 0; // Apagar segmentos si índice inválido
+                    }
+                }
+                GPIOD->ODR = 0xF7;  // Activar extremo derecho (PD3)
+                break;
+                
+            case 1:  // Segundo dígito desde la derecha - penúltimo carácter (r)
+                digit_value = color_display[2];
+                if (digit_value < 10) {
+                    // Es un dígito numérico
+                    GPIOE->ODR = seven_segment_digits[digit_value];
+                } else {
+                    uint8_t letter_index = digit_value - 10;
+                    if (letter_index < 16) {
+                        GPIOE->ODR = seven_segment_letters[letter_index];
+                    } else {
+                        GPIOE->ODR = 0; // Apagar segmentos si índice inválido
+                    }
+                }
+                GPIOD->ODR = 0xFB;  // Activar segundo desde derecha (PD2)
+                break;
+                
+            case 2:  // Tercer dígito - segundo carácter (r)
+                digit_value = color_display[1];
+                if (digit_value < 10) {
+                    // Es un dígito numérico
+                    GPIOE->ODR = seven_segment_digits[digit_value];
+                } else {
+                    uint8_t letter_index = digit_value - 10;
+                    if (letter_index < 16) {
+                        GPIOE->ODR = seven_segment_letters[letter_index];
+                    } else {
+                        GPIOE->ODR = 0; // Apagar segmentos si índice inválido
+                    }
+                }
+                GPIOD->ODR = 0xFD;  // Activar tercer dígito (PD1)
+                break;
+                
+            case 3:  // Cuarto dígito - primer carácter (E)
                 digit_value = color_display[0];
                 if (digit_value < 10) {
-                    GPIOE->ODR = seven_segment_digits[digit_value]; // Es un número normal
+                    // Es un dígito numérico
+                    GPIOE->ODR = seven_segment_digits[digit_value];
                 } else {
-                    // Mostrar letras (A=10, B=11, C=12, D=13)
-                    // Usamos el array de letras definido arriba
-                    GPIOE->ODR = seven_segment_letters[digit_value - 10]; // Convertir 10->0, 11->1, etc.
+                    uint8_t letter_index = digit_value - 10;
+                    if (letter_index < 16) {
+                        GPIOE->ODR = seven_segment_letters[letter_index];
+                    } else {
+                        GPIOE->ODR = 0; // Apagar segmentos si índice inválido
+                    }
                 }
-                GPIOD->ODR = 0xF7; // Activar dígito extremo derecho
-                break;
-                
-            case 1: // Segundo dígito desde la derecha
-                digit_value = color_display[1];
-                GPIOE->ODR = seven_segment_digits[digit_value]; // Siempre un número
-                GPIOD->ODR = 0xFB; // Activar segundo dígito desde derecha
-                break;
-                
-            case 2: // Tercer dígito (normalmente vacío)
-                if (color_display[2] > 0) {
-                    GPIOE->ODR = seven_segment_digits[color_display[2]];
-                    GPIOD->ODR = 0xFD; // Activar tercer dígito
-                }
-                break;
-                
-            case 3: // Cuarto dígito (normalmente vacío)
-                if (color_display[3] > 0) {
-                    GPIOE->ODR = seven_segment_digits[color_display[3]];
-                    GPIOD->ODR = 0xFE; // Activar cuarto dígito
-                }
+                GPIOD->ODR = 0xFE;  // Activar cuarto dígito (PD0)
                 break;
         }
         
-        // Avanzar al siguiente dígito
+        // Avanzar al siguiente dígito para la próxima actualización
         current_digit = (current_digit + 1) % 4;
     }
 }
