@@ -411,8 +411,7 @@ int main(void) {
     // Inicializar interrupción PB2
     Init_PB2_Interrupt();
     
-    // Inicializar ADC
-    adc();
+
     
     // Iniciar con valor 0
     counter = 0;
@@ -425,6 +424,10 @@ int main(void) {
     
     // Bucle principal simplificado con SysTick
     while (1) {
+
+
+        adc(); // Llamar a la función ADC para leer el voltaje
+        adc_main(); // Llamar a la función ADC para procesar el voltaje
         // Actualizar el display cuando lo indique la interrupción de SysTick
         if (display_update) {
             display_update = 0;
