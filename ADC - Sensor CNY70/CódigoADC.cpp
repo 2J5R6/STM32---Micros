@@ -72,9 +72,7 @@ volatile uint8_t color_display[4] = {0}; // Valores a mostrar para el color dete
 void UpdateDisplay(void);
 void MySystemInit(void);
 
-//-----------------------------------------------------------------------daniel´s code-----------------------------------------------------------------//
-
-//----------------------------------------------ADC1----------------------------------//
+//----------------------------------------------ADC-----------------------------------//
 // Variable para el voltaje leído
 volatile uint16_t voltage = 0;
 volatile double volts = 0; // Variable para almacenar el voltaje convertido
@@ -85,6 +83,12 @@ void adc(){
 
     RCC->APB2ENR|=(1<<8)|(1<<9)|(1<<10); //ENABLE ADC 1,2 AND 3 CLOCK
 
+    // A PORTS AS ADC
+    /*MODER 0 FOR 8 BITS ,4 MHZ, 112 CYCLES , ALLINGMENT RIGHT 
+    0,3-  1V----->TURN ON BLUE LED
+    1,3-  2V----->TURN ON GREEN LED
+    2-    3V----->TURN ON RED LED
+    */
     GPIOA->MODER|=(1<<1)|(1<<0); //PA0 as analog mode
     GPIOA->PUPDR|=(1<<1); //PA0 as pull down mode
 
@@ -116,58 +120,6 @@ void adc_main(){
         volts = (voltage * 3.3) / 4095; //convert to volts
         
 }
-
-
-
-//----------------------------------------------end ADC1--------------------------------//
-
-//----------------------------------------------ADC2-----------------------------------//
-// Variable para el voltaje leído
-volatile uint16_t voltage2 = 0; // Corregir el tipo de dato a uint16_t
-volatile double volts2 = 0; // Variable para almacenar el voltaje convertido
-
-
-
-void adc_2(){
-
-    GPIOC->MODER |= (1<<3)|(1<<2); //PC1 as analog mod
-	GPIOC->PUPDR |= (1<<3); //PC1 as pull down mode
- 
-    ADC2->CR2 |= ((1<<10)|(1<<0)); //Select the EOC bit at the end of each regular conversion and enable the A/D converter
-    ADC2->CR1 &= ~(0b11<<24); //Clear the A/D resolution bits 
-
-    
-    ADC2->SMPR2|=(0b111<<0); //480 cycles
-    ADC2->SQR3 &= ~(0b11111<<0); //Clear the regular sequence bits 
-    ADC2->SQR3 |= (0b1011<<0); //Set the channel 11 on 1st conversion in regular sequence 
-
-}
-
-void adc_main_2(){
-    ADC2->CR2|=(1<<30); //start conversion
-
-    while(((ADC1->SR & (1<<1)) >> 1) == 0){
-
-        ADC2->SR &= ~(1<<1);
-
-    } //wait for conversion to complete (EOC flag)
-        
-        voltage2 = ADC2->DR; //read value
-        
-        volts2 = (voltage * 3.3) / 4095; //convert to volts    
-        
-
-}
-
-
-//----------------------------------------------end ADC2-----------------------------------//
-
-
-
-//--------------------------------------------------------------------------------------end daniel´s code----------------------------------------------------------------------------------//
-
-
-
 
 
 // Función para inicializar la interrupción PB2
@@ -459,7 +411,8 @@ int main(void) {
     // Inicializar interrupción PB2
     Init_PB2_Interrupt();
     
-
+    // Inicializar ADC
+    adc();
     
     // Iniciar con valor 0
     counter = 0;
@@ -472,20 +425,6 @@ int main(void) {
     
     // Bucle principal simplificado con SysTick
     while (1) {
-
-        //------------------------------------------------------------------------------daniel´s code---------------------------------------------------//
-        
-        adc(); // Llamar a la función ADC para leer el voltaje
-        adc_main(); // Llamar a la función ADC para procesar el voltaje
-
-      //adc_2(); // Llamar a la función ADC para leer el voltaje
-     // adc_main_2(); // Llamar a la función ADC para procesar el voltaje
-
-        //------------------------------------------------------------------------------end daniel´s code---------------------------------------------------//
-
-
-
-
         // Actualizar el display cuando lo indique la interrupción de SysTick
         if (display_update) {
             display_update = 0;
