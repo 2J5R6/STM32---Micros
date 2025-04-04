@@ -152,13 +152,18 @@ void Init_PB2_Interrupt(void) {
 
 // Función para determinar el color basado en la lectura ADC
 void DetectColor(void) {
-    // Realizar la lectura ADC
+    // Realizar la lectura ADC y asegurar que los valores leídos estén inicializados
+    voltage = 0;
+    volts = 0;
     adc_main();
+    
+    // Debug en modo fake para pruebas - muestra Err0 siempre
+    // Eliminar esto cuando el sensor esté conectado
+    
     
     // Verificar que el sensor esté conectado y tenga una lectura válida
     if (volts < 0.1) {
-        // Definamos explícitamente los valores para "Err0"
-        // 'E' = índice 9, 'r' = índice 3
+        // "Err0" - Mensaje de error
         color_display[0] = 10 + 9;  // 'E' (índice 9)
         color_display[1] = 10 + 3;  // 'r' (índice 3) 
         color_display[2] = 10 + 3;  // 'r' (índice 3)
@@ -271,6 +276,13 @@ void UpdateDisplayWithMode(void) {
         // Modo identificación de color - mostrar resultado
         uint8_t digit_value = 0;
         
+        // Validar los valores a mostrar antes de procesarlos
+        for (int i = 0; i < 4; i++) {
+            if (color_display[i] >= 10 + 16) {
+                color_display[i] = 0; // Valor seguro si hay corrupción
+            }
+        }
+        
         // Extraer el dígito correspondiente para el modo color
         switch (current_digit) {
             case 0:  // Dígito extremo derecho - último carácter (0)
@@ -350,6 +362,11 @@ extern "C" void EXTI2_IRQHandler(void) {
         // Limpiar flag de interrupción pendiente
         EXTI->PR |= (1 << 2);
         
+        // Inicializar el array de color con valores vacíos
+        for(int i = 0; i < 4; i++) {
+            color_display[i] = 0;
+        }
+        
         // Cambiar al modo identificación de color
         operation_mode = 1;
         
@@ -414,10 +431,15 @@ int main(void) {
     // Inicializar ADC
     adc();
     
-    // Iniciar con valor 0
+    // Iniciar con valores seguros
     counter = 0;
     current_digit = 0;
     operation_mode = 0;
+    
+    // Inicializar array de color con ceros
+    for(int i = 0; i < 4; i++) {
+        color_display[i] = 0;
+    }
     
     // Inicializar estados de salida
     GPIOE->ODR = 0;       // Todos segmentos apagados
