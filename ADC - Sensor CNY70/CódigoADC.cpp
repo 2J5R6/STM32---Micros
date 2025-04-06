@@ -155,54 +155,43 @@ void DetectColor(void) {
     // Realizar la lectura ADC
     adc_main();
     
-    // Verificar que el sensor esté conectado y tenga una lectura válida
-    if (volts < 0.1) {
-        // Definamos explícitamente los valores para "Err0"
-        // 'E' = índice 9, 'r' = índice 3
-        color_display[0] = 10 + 9;  // 'E' (índice 9)
-        color_display[1] = 10 + 3;  // 'r' (índice 3) 
-        color_display[2] = 10 + 3;  // 'r' (índice 3)
-        color_display[3] = 0;       // '0' (dígito numérico)
-        color_detected = 0;
-        return;
-    }
-    
-    // Determinar color basado en el valor del voltaje (rangos ajustados)
-    if (volts >= 0.3 && volts < 0.6) {
-        // Color 1: Azul - Convención "Az01"
-        for (int i = 0; i < 4; i++) {
-            color_display[i] = color_codes[0][i];
-        }
+    // Determinar el color basado en el rango de voltaje
+    if (volts >= 0.19 && volts < 0.21) {
+        // Azul - "Az01"
+        color_display[0] = 10 + 0;  // 'A' (índice 0)
+        color_display[1] = 10 + 1;  // 'z' (índice 1)
+        color_display[2] = 0;       // '0'
+        color_display[3] = 1;       // '1'
         color_detected = 1;
-    } 
-    else if (volts >= 0.8 && volts < 1.2) {
-        // Color 2: Gris - Convención "gr32"
+    }
+    else if (volts >= 0.29 && volts < 0.34) {
+        // Gris - "gr32"
         for (int i = 0; i < 4; i++) {
             color_display[i] = color_codes[1][i];
         }
         color_detected = 2;
-    } 
-    else if (volts >= 1.4 && volts < 1.8) {
-        // Color 3: Negro - Convención "Nr45"
+    }
+    else if (volts >= 0.1 && volts < 0.7) {
+        // Negro - "Nr45"
         for (int i = 0; i < 4; i++) {
             color_display[i] = color_codes[2][i];
         }
         color_detected = 3;
-    } 
-    else if (volts >= 2.0 && volts < 3.0) {
-        // Color 4: Rojo - Convención "RJ97"
+    }
+    else if (volts >= 0.84 && volts < 0.89) {
+        // Rojo - "RJ97"
         for (int i = 0; i < 4; i++) {
             color_display[i] = color_codes[3][i];
         }
         color_detected = 4;
     }
     else {
-        // Valor fuera de los rangos conocidos - mostrar "ndEF" (no definido)
-        color_display[0] = 10 + 7;  // Código para 'n' (índice 7 en seven_segment_letters)
-        color_display[1] = 10 + 12; // Código para 'd' (índice 12 en seven_segment_letters)
-        color_display[2] = 10 + 9;  // Código para 'E' (índice 9 en seven_segment_letters)
-        color_display[3] = 10 + 10; // Código para 'F' (índice 10 en seven_segment_letters)
-        color_detected = 5;         // Código no definido
+        // Fuera de rango - "ndEF"
+        color_display[0] = 10 + 7;  // 'n' (índice 7)
+        color_display[1] = 10 + 12; // 'd' (índice 12)
+        color_display[2] = 10 + 9;  // 'E' (índice 9)
+        color_display[3] = 10 + 10; // 'F' (índice 10)
+        color_detected = 5;
     }
 }
 
@@ -394,6 +383,11 @@ extern "C" void SysTick_Handler(void) {
         display_update = 1; // Flag para actualizar el display en el bucle principal
     }
     
+    // Detectar color constantemente en modo color (cada 100ms)
+    if (operation_mode == 1 && tick_counter % 100 == 0) {
+        DetectColor(); // Actualizar la detección de color periódicamente
+    }
+    
     // Actualizar el contador del display (cada 500ms = 0.5 segundos)
     if (tick_counter % 500 == 0 && operation_mode == 0) {
         // Incrementar contador solo en modo contador
@@ -418,6 +412,11 @@ int main(void) {
     counter = 0;
     current_digit = 0;
     operation_mode = 0;
+    
+    // Asegurarse de que color_display tenga valores predeterminados válidos
+    for (int i = 0; i < 4; i++) {
+        color_display[i] = i; // Valores predeterminados simples (0,1,2,3)
+    }
     
     // Inicializar estados de salida
     GPIOE->ODR = 0;       // Todos segmentos apagados
