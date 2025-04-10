@@ -73,24 +73,28 @@ void UpdateDisplay(void);
 void MySystemInit(void);
 
 //----------------------------------------------ADC-----------------------------------//
-// Variables para el voltaje leído - CNY70 (ADC2)
-volatile uint16_t voltage_cny70 = 0;
-volatile double volts_cny70 = 0; // Variable para almacenar el voltaje convertido del CNY70
+// Variables para el voltaje leído - CNY70 (ADC2 - PB1)
+volatile uint16_t data_value_adc2 = 0;
+volatile float voltaje2 = 0; // Variable para almacenar el voltaje convertido del CNY70
 
-// Variables para el voltaje leído - Fotorresistencia (ADC1)
-volatile uint16_t voltage_light = 0;
-volatile double volts_light = 0; // Variable para almacenar el voltaje convertido de la fotorresistencia
+// Variables para el voltaje leído - Fotorresistencia (ADC1 - PC4)
+volatile uint16_t data_value_adc1 = 0;
+volatile float voltaje1 = 0; // Variable para almacenar el voltaje convertido de la fotorresistencia
 
-// Referencia existente para compatibilidad con el resto del código
+// Mantener las variables legacy para compatibilidad con el resto del código
 volatile uint16_t voltage = 0;
 volatile double volts = 0;
+volatile uint16_t voltage_cny70 = 0;
+volatile double volts_cny70 = 0;
+volatile uint16_t voltage_light = 0;
+volatile double volts_light = 0;
 
-void adc(){
+void adc() {
     // Habilitar relojes para puertos GPIO necesarios
     RCC->AHB1ENR |= (1<<0)|(1<<1)|(1<<2)|(1<<3); // Habilitar reloj para puertos A, B, C, D
     
-    // Habilitar relojes para ADC1, ADC2 y ADC3
-    RCC->APB2ENR |= (1<<8)|(1<<9)|(1<<10); // ENABLE ADC 1,2,3 CLOCK
+    // Habilitar relojes para ADC1 y ADC2
+    RCC->APB2ENR |= (1<<8)|(1<<9); // ENABLE ADC 1,2 CLOCK
     
     // Configuración de pines analógicos
     // PC4 para fotorresistencia (intensidad lumínica) - ADC1
@@ -108,32 +112,35 @@ void adc(){
     
     // Configuración de ADC2 para PB1 (CNY70)
     ADC2->CR2 |= ((1<<10) | (1<<0));  // EOCS y ADC Enable
-    ADC2->CR1 &= ~(0b11<<24);         // Resolución a 12 bits para mayor precisión
+    ADC2->CR1 &= ~(0b11<<24);         // Limpiar bits de resolución - Resolución a 12 bits para mayor precisión
     ADC2->SMPR1 |= (0b111<<6);        // Tiempo de muestreo máximo para canal 9
     ADC2->SQR3 = 9;                   // Canal 9 para PB1
 }
 
-void adc_main(){
+void adc_main() {
     // Lectura del sensor CNY70 (ADC2/PB1)
-    ADC2->CR2 |= (1<<30);                       // Iniciar conversión A/D
-    while (((ADC2->SR & (1<<1)) >> 1) == 0) {}  // Esperar a que termine la conversión
-    ADC2->SR &= ~(1<<1);                        // Limpiar el flag EOC
-    voltage_cny70 = ADC2->DR;                   // Leer valor
-    volts_cny70 = (voltage_cny70 * 3.3) / 4095; // Convertir a voltios (para resolución de 12 bits)
+    ADC2->CR2 |= (1<<30);                     // Iniciar conversión A/D
+    while (((ADC2->SR & (1<<1)) >> 1) == 0) {} // Esperar a que termine la conversión
+    ADC2->SR &= ~(1<<1);                      // Limpiar el flag EOC
+    data_value_adc2 = ADC2->DR;               // Leer valor
+    voltaje2 = (float)data_value_adc2 * (3.3f / 4095.0f); // Convertir a voltios (para resolución de 12 bits)
     
-    // Mantener la compatibilidad con el resto del código
-    voltage = voltage_cny70;
-    volts = volts_cny70;
+    // Actualizar variables legacy para compatibilidad
+    voltage_cny70 = data_value_adc2;
+    volts_cny70 = voltaje2;
+    voltage = data_value_adc2;
+    volts = voltaje2;
     
     // Lectura de la fotorresistencia (ADC1/PC4)
-    ADC1->CR2 |= (1<<30);                       // Iniciar conversión A/D
-    while (((ADC1->SR & (1<<1)) >> 1) == 0) {}  // Esperar a que termine la conversión
-    ADC1->SR &= ~(1<<1);                        // Limpiar el flag EOC
-    voltage_light = ADC1->DR;                   // Leer valor
-    volts_light = voltage_light * (3.3 / 990);  // Convertir a voltios (para resolución de 10 bits)
+    ADC1->CR2 |= (1<<30);                     // Iniciar conversión A/D
+    while (((ADC1->SR & (1<<1)) >> 1) == 0) {} // Esperar a que termine la conversión
+    ADC1->SR &= ~(1<<1);                      // Limpiar el flag EOC
+    data_value_adc1 = ADC1->DR;               // Leer valor
+    voltaje1 = data_value_adc1 * (3.3f / 990.0f); // Convertir a voltios (para resolución de 10 bits)
     
-    // Aquí puedes hacer cálculos adicionales con volts_light si es necesario
-    // Por ejemplo, calcular la intensidad luminosa basada en la fotorresistencia
+    // Actualizar variables legacy para compatibilidad
+    voltage_light = data_value_adc1;
+    volts_light = voltaje1;
 }
 
 // Función para inicializar la interrupción PB2
@@ -170,7 +177,7 @@ void DetectColor(void) {
     adc_main();
     
     // Determinar el color basado en el rango de voltaje
-    if (volts >= 0.19 && volts < 0.21) {
+    if (voltaje2 >= 0.19 && voltaje2 < 0.21) {
         // Azul - "Az01"
         color_display[0] = 10 + 0;  // 'A' (índice 0)
         color_display[1] = 10 + 1;  // 'z' (índice 1)
@@ -178,21 +185,21 @@ void DetectColor(void) {
         color_display[3] = 1;       // '1'
         color_detected = 1;
     }
-    else if (volts >= 0.29 && volts < 0.34) {
+    else if (voltaje2 >= 0.29 && voltaje2 < 0.34) {
         // Gris - "gr32"
         for (int i = 0; i < 4; i++) {
             color_display[i] = color_codes[1][i];
         }
         color_detected = 2;
     }
-    else if (volts >= 0.1 && volts < 0.7) {
+    else if (voltaje2 >= 0.1 && voltaje2 < 0.7) {
         // Negro - "Nr45"
         for (int i = 0; i < 4; i++) {
             color_display[i] = color_codes[2][i];
         }
         color_detected = 3;
     }
-    else if (volts >= 0.84 && volts < 0.89) {
+    else if (voltaje2 >= 0.84 && voltaje2 < 0.89) {
         // Rojo - "RJ97"
         for (int i = 0; i < 4; i++) {
             color_display[i] = color_codes[3][i];
